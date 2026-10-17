@@ -4,32 +4,36 @@ from js import Response, Headers
 API_KEY = "ak_gf6ststb3ob15ey0auzxh7ru"
 USER_EMAIL = "23f2002620@ds.study.iitm.ac.in"
 
+def get_cors_headers():
+    """Builds a valid JS Headers object for Pyodide interop."""
+    h = Headers.new()
+    h.append("Access-Control-Allow-Origin", "*")
+    h.append("Access-Control-Allow-Methods", "POST, OPTIONS")
+    h.append("Access-Control-Allow-Headers", "Content-Type, X-API-Key, x-api-key")
+    h.append("Content-Type", "application/json")
+    return h
+
 async def on_fetch(request, env):
-    cors_headers = {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, X-API-Key",
-        "Content-Type": "application/json"
-    }
+    cors_headers = get_cors_headers()
 
-    # Handle CORS preflight request
+    # Handle CORS preflight OPTIONS request
     if request.method == "OPTIONS":
-        return Response.new(None, status=204, headers=Headers.new(cors_headers))
+        return Response.new("", status=204, headers=cors_headers)
 
-    # Authenticate X-API-Key header
-    api_key_header = request.headers.get("X-API-Key")
-    if not api_key_header or api_key_header != API_KEY:
+    # Extract API Key header (case-insensitive check)
+    api_key = request.headers.get("X-API-Key") or request.headers.get("x-api-key")
+    if not api_key or api_key != API_KEY:
         return Response.new(
             json.dumps({"error": "Unauthorized"}),
             status=401,
-            headers=Headers.new(cors_headers)
+            headers=cors_headers
         )
 
     if request.method != "POST":
         return Response.new(
             json.dumps({"error": "Method Not Allowed"}),
             status=405,
-            headers=Headers.new(cors_headers)
+            headers=cors_headers
         )
 
     try:
@@ -38,12 +42,14 @@ async def on_fetch(request, env):
         events = body.get("events", [])
 
         total_events = len(events)
-        unique_users = len(set(e.get("user") for e in events if "user" in e))
+        unique_users = len(set(e.get("user") for e in events if isinstance(e, dict) and "user" in e))
 
         revenue = 0.0
         user_positive_totals = {}
 
         for event in events:
+            if not isinstance(event, dict):
+                continue
             user = event.get("user", "")
             try:
                 amount = float(event.get("amount", 0))
@@ -72,11 +78,11 @@ async def on_fetch(request, env):
         return Response.new(
             json.dumps(payload),
             status=200,
-            headers=Headers.new(cors_headers)
+            headers=cors_headers
         )
     except Exception as e:
         return Response.new(
-            json.dumps({"error": "Invalid JSON or request structure"}),
+            json.dumps({"error": "Invalid JSON"}),
             status=400,
-            headers=Headers.new(cors_headers)
+            headers=cors_headers
         )
